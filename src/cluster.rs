@@ -41,7 +41,7 @@ pub(crate) fn select_from_clusters(
         let mut proper_distance = true;
         for existing_lab_value in &color_lab_values {
             let distance = color_diff_lab(&prospect_lab_value, existing_lab_value);
-            if distance < min_distance || distance > max_distance {
+            if distance <= min_distance || distance >= max_distance {
                 proper_distance = false;
                 break;
             }
@@ -55,7 +55,7 @@ pub(crate) fn select_from_clusters(
                 (rgb.blue * 255.0).round() as u8,
             );
             if !foreground_picked
-                && color_diff_lab(&prospect_lab_value, &color_lab_values[0]) > min_distance * 3.0
+                && color_diff_lab(&prospect_lab_value, &color_lab_values[0]) >= min_distance * 3.0
             {
                 colors.insert(1, color);
                 color_lab_values.insert(1, prospect_lab_value);
@@ -69,9 +69,7 @@ pub(crate) fn select_from_clusters(
 
     if colors.len() < 16 {
         return Err(format!(
-            "Insufficient distinct colors found: expected at least 16, but only found {}. \
-             Try expanding the distance parameters (if you are fine with a lower or higher contrast image) \
-             or use another image.",
+            "Insufficient distinct colors found: expected at least 16, but only found {}.",
             colors.len()
         )
         .into());
@@ -86,7 +84,7 @@ pub fn k_cluster(
     seed: u64,
     min_distance: f32,
     max_distance: f32,
-) -> Result<Vec<Srgb<u8>>, Box<dyn std::error::Error>> {
+) -> (Result<Vec<Srgb<u8>>, Box<dyn std::error::Error>>, f32) {
     let max_runs = 1;
     let converge = 5.0;
 
@@ -121,7 +119,43 @@ pub fn k_cluster(
     let mut sorted_clusters = Lab::sort_indexed_colors(&clusters.centroids, &clusters.indices);
     sorted_clusters.sort_unstable_by(|a, b| b.percentage.total_cmp(&a.percentage));
 
-    select_from_clusters(dominant_color, sorted_clusters, min_distance, max_distance)
+    let mut current_min_distance = min_distance;
+    loop {
+        match select_from_clusters(
+            dominant_color,
+            sorted_clusters.clone(),
+            current_min_distance,
+            max_distance,
+        ) {
+            Ok(colors) => {
+                if current_min_distance < min_distance {
+                    eprintln!(
+                        "Warning: Reduced minimum distance to {} due to limited dynamic range.",
+                        current_min_distance
+                    );
+                    eprintln!(
+                        "For different results, you could try increasing the max distance parameter or use an image with a greater dynamic range."
+                    );
+                }
+                return (Ok(colors), current_min_distance);
+            }
+            Err(e) => {
+                if current_min_distance > 0.0 {
+                    eprintln!("Warning: {}", e);
+                    current_min_distance -= 2.0;
+                    if current_min_distance < 0.0 {
+                        current_min_distance = 0.0;
+                    }
+                    eprintln!(
+                        "Retrying with reduced minimum distance: {}",
+                        current_min_distance
+                    );
+                } else {
+                    return (Err(e), current_min_distance);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -228,5 +262,22 @@ mod tests {
 
         let dist_same = color_diff_lab(&black, &black);
         assert_eq!(dist_same, 0.0);
+    }
+
+    #[test]
+    fn test_all_white_works_but_complains() {
+        let mut pixels_from_all_white_image = vec![Srgb::new(1.0, 1.0, 1.0).into_color()];
+        for n in 1..20 {
+            pixels_from_all_white_image
+                .push(Srgb::new(1.0 - n as f32 * 0.00001, 1.0, 1.0).into_color());
+        }
+        println!("{:?}", pixels_from_all_white_image);
+
+        let (result, last_distance) = k_cluster(&pixels_from_all_white_image, 60, 1, 10.0, 200.0);
+        println!("{:?}", result);
+        assert!(result.is_ok());
+        assert!(last_distance == 0.0);
+        let colors = result.unwrap();
+        assert_eq!(colors.len(), 16);
     }
 }

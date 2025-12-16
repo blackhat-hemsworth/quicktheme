@@ -1,5 +1,3 @@
-// # TODO: test images & compare w wezterm implementation
-
 mod base16;
 mod cluster;
 mod io;
@@ -70,13 +68,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     io::validate_output_path(&output_dir)?;
 
     let pixels = io::load_image(filename)?;
-    let mut colors = cluster::k_cluster(
+    let (cluster_result, last_distance) = cluster::k_cluster(
         &pixels,
         n_clusters,
         seed,
         args.min_distance,
         args.max_distance,
-    )?;
+    );
+
+    let mut colors = cluster_result?;
 
     // Apply output mode transformations
     if let Some(mode) = &args.output_mode {
@@ -96,11 +96,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build command string with all parameters used
     let command = format!(
-        "quicktheme -f {} -a \"{}\" -r {} -m {} -M {}{}{}{}",
+        "quicktheme -f {} -a \'{}\' -r {} -m {} -M {}{}{}{}",
         filename,
         author,
         seed,
-        args.min_distance,
+        last_distance,
         args.max_distance,
         args.theme_name
             .as_ref()
@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|m| format!(" --output-mode {}", m))
             .unwrap_or_default(),
         if output_dir != "stdout" {
-            format!(" -o \"{}\"", output_dir)
+            format!(" -o \'{}\'", output_dir)
         } else {
             String::new()
         }
