@@ -31,7 +31,7 @@ struct Args {
     seed: u64,
 
     /// Minimum color distance for clustering (defaults to 10.0)
-    #[arg(short = 'm', long, default_value_t = 10.0)]
+    #[arg(short = 'm', long, default_value_t = 12.0)]
     min_distance: f32,
 
     /// Maximum color distance for clustering (defaults to 100.0)
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .to_string()
     });
     let author = args.author.unwrap_or_else(|| "Anonymous".to_string());
-    let n_clusters = 64;
+    let n_clusters = 128;
     let seed = args.seed;
 
     io::validate_output_path(&output_dir)?;
