@@ -28,54 +28,71 @@ pub(crate) fn select_from_clusters(
     }];
 
     let mut foreground_picked = false;
-    for prospect in clusters.iter() {
-        if colors.len() >= 16 {
-            break;
-        }
-        let prospect_lab_value = LabValue {
-            l: prospect.centroid.l,
-            a: prospect.centroid.a,
-            b: prospect.centroid.b,
-        };
+    let mut current_min_distance = min_distance;
+    loop {
+        if current_min_distance < 0.0 {
+            return Err(format!(
+                "Insufficient distinct colors found: expected at least 16, but only found {}.",
+                colors.len()
+            )
+            .into());
+        } else {
+            for prospect in clusters.iter() {
+                if colors.len() >= 16 {
+                    return Ok(colors);
+                }
+                let prospect_lab_value = LabValue {
+                    l: prospect.centroid.l,
+                    a: prospect.centroid.a,
+                    b: prospect.centroid.b,
+                };
 
-        let mut proper_distance = true;
-        for existing_lab_value in &color_lab_values {
-            let distance = color_diff_lab(&prospect_lab_value, existing_lab_value);
-            if distance <= min_distance || distance >= max_distance {
-                proper_distance = false;
-                break;
+                let distances: Vec<f32> = color_lab_values
+                    .iter()
+                    .map(|existing_lab_value| {
+                        color_diff_lab(&prospect_lab_value, existing_lab_value)
+                    })
+                    .collect();
+
+                let mut sorted_distances = distances.clone();
+                sorted_distances.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let median = sorted_distances[sorted_distances.len() / 2];
+                let minimum = sorted_distances[0];
+
+                let proper_distance = median > current_min_distance
+                    && minimum > current_min_distance / 3.0
+                    && distances[0] > current_min_distance * 2.0
+                    && distances.iter().all(|&d| d < max_distance);
+
+                if proper_distance {
+                    // background distance needs to be a liiiittle extra
+                    let background_dist = color_diff_lab(&prospect_lab_value, &color_lab_values[0]);
+                    if background_dist < current_min_distance * 1.5 {
+                        break;
+                    }
+
+                    let rgb: Srgb = prospect.centroid.into_color();
+                    let color = Srgb::new(
+                        (rgb.red * 255.0).round() as u8,
+                        (rgb.green * 255.0).round() as u8,
+                        (rgb.blue * 255.0).round() as u8,
+                    );
+                    if !foreground_picked
+                        && color_diff_lab(&prospect_lab_value, &color_lab_values[0])
+                            >= current_min_distance * 3.0
+                    {
+                        colors.insert(1, color);
+                        color_lab_values.insert(1, prospect_lab_value);
+                        foreground_picked = true;
+                    } else {
+                        colors.push(color);
+                        color_lab_values.push(prospect_lab_value);
+                    }
+                }
             }
         }
-
-        if proper_distance {
-            let rgb: Srgb = prospect.centroid.into_color();
-            let color = Srgb::new(
-                (rgb.red * 255.0).round() as u8,
-                (rgb.green * 255.0).round() as u8,
-                (rgb.blue * 255.0).round() as u8,
-            );
-            if !foreground_picked
-                && color_diff_lab(&prospect_lab_value, &color_lab_values[0]) >= min_distance * 3.0
-            {
-                colors.insert(1, color);
-                color_lab_values.insert(1, prospect_lab_value);
-                foreground_picked = true;
-            } else {
-                colors.push(color);
-                color_lab_values.push(prospect_lab_value);
-            }
-        }
+        current_min_distance -= 2.0;
     }
-
-    if colors.len() < 16 {
-        return Err(format!(
-            "Insufficient distinct colors found: expected at least 16, but only found {}.",
-            colors.len()
-        )
-        .into());
-    }
-
-    Ok(colors)
 }
 
 pub fn k_cluster(
@@ -84,7 +101,7 @@ pub fn k_cluster(
     seed: u64,
     min_distance: f32,
     max_distance: f32,
-) -> (Result<Vec<Srgb<u8>>, Box<dyn std::error::Error>>, f32) {
+) -> Result<Vec<Srgb<u8>>, Box<dyn std::error::Error>> {
     let max_runs = 1;
     let converge = 5.0;
 
@@ -119,43 +136,7 @@ pub fn k_cluster(
     let mut sorted_clusters = Lab::sort_indexed_colors(&clusters.centroids, &clusters.indices);
     sorted_clusters.sort_unstable_by(|a, b| b.percentage.total_cmp(&a.percentage));
 
-    let mut current_min_distance = min_distance;
-    loop {
-        match select_from_clusters(
-            dominant_color,
-            sorted_clusters.clone(),
-            current_min_distance,
-            max_distance,
-        ) {
-            Ok(colors) => {
-                if current_min_distance < min_distance {
-                    eprintln!(
-                        "Warning: Reduced minimum distance to {} due to limited dynamic range.",
-                        current_min_distance
-                    );
-                    eprintln!(
-                        "For different results, you could try increasing the max distance parameter or use an image with a greater dynamic range."
-                    );
-                }
-                return (Ok(colors), current_min_distance);
-            }
-            Err(e) => {
-                if current_min_distance > 0.0 {
-                    eprintln!("Warning: {}", e);
-                    current_min_distance -= 2.0;
-                    if current_min_distance < 0.0 {
-                        current_min_distance = 0.0;
-                    }
-                    eprintln!(
-                        "Retrying with reduced minimum distance: {}",
-                        current_min_distance
-                    );
-                } else {
-                    return (Err(e), current_min_distance);
-                }
-            }
-        }
-    }
+    select_from_clusters(dominant_color, sorted_clusters, min_distance, max_distance)
 }
 
 #[cfg(test)]
@@ -207,35 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn test_select_from_clusters_insufficient_colors() {
-        // Create a dominant color
-        let dominant = Lab::new(50.0, 0.0, 0.0);
-
-        // Create very few clusters, all too close to dominant
-        let mut clusters = vec![
-            create_test_centroid(50.5, 0.5, 0.5, 0.8, 0), // Very close
-            create_test_centroid(51.0, 1.0, 1.0, 0.2, 1), // Very close
-        ];
-        for i in 0..14 {
-            let l = 20.0 + (i as f32 * 3.0);
-            let a = (i as f32 * 40.0).sin() * 35.0;
-            let b = (i as f32 * 40.0).cos() * 35.0;
-            clusters.push(create_test_centroid(
-                l,
-                a,
-                b,
-                1.0 / (i as f32 + 1.0),
-                i as u8,
-            ));
-        }
-
-        let result = select_from_clusters(dominant, clusters, 10.0, 200.0);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Insufficient distinct colors"));
-    }
-
-    #[test]
     fn test_color_diff_lab() {
         // Test the color difference function
         let black = LabValue {
@@ -273,10 +225,9 @@ mod tests {
         }
         println!("{:?}", pixels_from_all_white_image);
 
-        let (result, last_distance) = k_cluster(&pixels_from_all_white_image, 60, 1, 10.0, 200.0);
+        let result = k_cluster(&pixels_from_all_white_image, 60, 1, 10.0, 200.0);
         println!("{:?}", result);
         assert!(result.is_ok());
-        assert!(last_distance == 0.0);
         let colors = result.unwrap();
         assert_eq!(colors.len(), 16);
     }

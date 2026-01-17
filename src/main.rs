@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     io::validate_output_path(&output_dir)?;
 
     let pixels = io::load_image(filename)?;
-    let (cluster_result, last_distance) = cluster::k_cluster(
+    let cluster_result = cluster::k_cluster(
         &pixels,
         n_clusters,
         seed,
@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         filename,
         author,
         seed,
-        last_distance,
+        args.min_distance,
         args.max_distance,
         args.theme_name
             .as_ref()
