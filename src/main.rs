@@ -38,6 +38,10 @@ struct Args {
     #[arg(short = 'M', long, default_value_t = 100.0)]
     max_distance: f32,
 
+    /// Minimum lightness (L*) contrast between accent colors and background (defaults to 25.0)
+    #[arg(short = 'l', long, default_value_t = 25.0)]
+    min_lightness_contrast: f32,
+
     /// Disable printing of the color grid
     #[arg(long)]
     no_grid: bool,
@@ -74,9 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seed,
         args.min_distance,
         args.max_distance,
+        args.min_lightness_contrast,
     );
 
     let mut colors = cluster_result?;
+    cluster::nudge_lightness(&mut colors, args.min_lightness_contrast);
 
     // Apply output mode transformations
     if let Some(mode) = &args.output_mode {
@@ -96,12 +102,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build command string with all parameters used
     let command = format!(
-        "quicktheme -f {} -a \'{}\' -r {} -m {} -M {}{}{}{}",
+        "quicktheme -f {} -a \'{}\' -r {} -m {} -M {} -l {}{}{}{}",
         filename,
         author,
         seed,
         args.min_distance,
         args.max_distance,
+        args.min_lightness_contrast,
         args.theme_name
             .as_ref()
             .map(|t| format!(" -t \"{}\"", t))
