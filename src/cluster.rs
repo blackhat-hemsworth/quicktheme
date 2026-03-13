@@ -30,6 +30,7 @@ pub(crate) fn select_from_clusters(
 
     let mut foreground_picked = false;
     let mut current_min_distance = min_distance;
+    let mut current_lightness_contrast = min_lightness_contrast;
     loop {
         if current_min_distance < 0.0 {
             return Err(format!(
@@ -66,7 +67,7 @@ pub(crate) fn select_from_clusters(
                     && minimum > current_min_distance / 3.0
                     && distances[0] > current_min_distance * 2.0
                     && distances.iter().all(|&d| d < max_distance)
-                    && lightness_contrast >= min_lightness_contrast;
+                    && lightness_contrast >= current_lightness_contrast;
 
                 if proper_distance {
                     // background distance needs to be a liiiittle extra
@@ -96,6 +97,9 @@ pub(crate) fn select_from_clusters(
             }
         }
         current_min_distance -= 2.0;
+        if current_min_distance <= 2.0 {
+            current_lightness_contrast = 0.0;
+        }
     }
 }
 
@@ -285,24 +289,36 @@ mod tests {
     }
 
     #[test]
-    fn test_lightness_contrast_rejects_similar_l() {
-        // Background at L=30, candidates with different hues but similar L values
+    fn test_lightness_contrast_preferred_during_selection() {
+        // Background at L=30, two sets of candidates:
+        // - high L* contrast (L=70) added later
+        // - low L* contrast (L=32) added first
+        // With lightness contrast, the high-contrast ones should be picked first
         let dominant = Lab::new(30.0, 0.0, 0.0);
         let mut clusters = vec![];
 
-        // First add a high-contrast foreground candidate
+        // Foreground candidate
         clusters.push(create_test_centroid(80.0, 10.0, 10.0, 0.5, 0));
 
-        // Add candidates with similar L to background but different hues
-        for i in 1..20 {
+        // Low L* contrast candidates (close to bg)
+        for i in 1..10 {
             let a = (i as f32 * 2.0).sin() * 50.0;
             let b = (i as f32 * 2.0).cos() * 50.0;
             clusters.push(create_test_centroid(32.0, a, b, 0.3 / i as f32, i as u8));
         }
 
-        // With high lightness contrast requirement, these should be rejected
+        // High L* contrast candidates
+        for i in 10..25 {
+            let a = (i as f32 * 2.5).sin() * 40.0;
+            let b = (i as f32 * 2.5).cos() * 40.0;
+            clusters.push(create_test_centroid(70.0, a, b, 0.2 / i as f32, i as u8));
+        }
+
+        // With lightness contrast=25, high-contrast candidates should be preferred
         let result = select_from_clusters(dominant, clusters, 5.0, 200.0, 25.0);
-        assert!(result.is_err() || result.as_ref().unwrap().len() < 16);
+        assert!(result.is_ok());
+        let colors = result.unwrap();
+        assert_eq!(colors.len(), 16);
     }
 
     #[test]
