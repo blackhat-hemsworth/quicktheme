@@ -4,29 +4,16 @@ A Rust CLI for extracting Base16 color schemes from images using K-means cluster
 
 ## Overview
 
-quicktheme analyzes an image and extracts 16 perceptually distinct colors using two-stage K-means clustering in Lab color space. Colors are selected with configurable distance constraints (Delta E 2000) and output as a Base16 color scheme in YAML format.
+quicktheme analyzes an image and create a sensible base16 colorscheme based on K-means clustering metholodology. The resulting colorscheme will use colors from the source image. It will be based in  the dominant color, but should also have a decent level of contrast with the foreground and tertiary colors.
 
-## Features
+and extracts 16 perceptually distinct colors using two-stage K-means clustering in Lab color space. Colors are selected with configurable distance constraints (Delta E 2000) and output to a Base16 color scheme in YAML format.
 
-- **Fast image processing** — Rust performance on images auto-resized to 256×256
-- **Perceptual clustering** — Two-stage K-means in Lab color space (4 clusters for dominant color, 128 for detail)
-- **Distance-based selection** — Delta E 2000 ensures selected colors are perceptually distinct
-- **Base16 output** — Generates theme files compatible with Base16 color schemes
-- **Reproducible** — Seeded random behavior for consistent results
-
-## Dependencies
-
-- `image` — Image loading and processing
-- `kmeans_colors` — Hamerly-optimized K-means clustering
-- `palette` — Color space conversions (RGB ↔ Lab)
-- `clap` — CLI argument parsing
-- `deltae` — Delta E 2000 perceptual color distance
-- `rand` — Seeded random number generation
-
-## Building
+## Installation
 
 ```bash
-cargo build --release
+git clone https://github.com/blackhat-hemsworth/quicktheme.git
+cd quicktheme
+cargo install --path .
 ```
 
 ## Usage
@@ -55,7 +42,7 @@ quicktheme -f image.jpg -t my_theme -a "Author" -o ./themes -r 42 -m 15.0 -M 80.
 
 ## Output Format
 
-Generated YAML files follow the Base16 specification:
+Generated YAML files follow the Base16 specification, with a command line inserted for reproducibility:
 
 ```yaml
 scheme: my_theme
@@ -66,3 +53,7 @@ base01: 887e49
 ...
 base0F: 9b8987
 ```
+
+## License
+
+GPLv3
