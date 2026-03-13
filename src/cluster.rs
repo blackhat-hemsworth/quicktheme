@@ -67,7 +67,7 @@ pub(crate) fn select_from_clusters(
                 if proper_distance {
                     // background distance needs to be a liiiittle extra
                     let background_dist = color_diff_lab(&prospect_lab_value, &color_lab_values[0]);
-                    if background_dist < current_min_distance * 1.5 {
+                    if background_dist < current_min_distance * 2.0 {
                         break;
                     }
 
