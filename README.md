@@ -1,5 +1,11 @@
 # quicktheme
 
+<p align="center">
+  <img src="quicktheme-demo.gif" alt="quicktheme CLI + quicktheme.nvim demo" width="100%">
+</p>
+
+> Demonstrates the **quicktheme CLI** paired with [quicktheme.nvim](https://github.com/blackhat-hemsworth/quicktheme.nvim) — generate a Base16 color scheme from any image and apply it live in Neovim.
+
 A Rust CLI for extracting Base16 color schemes from images using K-means clustering.
 
 ## Overview
